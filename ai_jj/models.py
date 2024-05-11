@@ -9,14 +9,16 @@ from tensorflow.keras.applications.inception_v3 import InceptionV3, preprocess_i
 # Importuje moduł numpy i przypisuje mu alias np
 from django.core.files.base import ContentFile  # Importuje klasę ContentFile z django.core.files.base
 import numpy as np
+import openai
+import os
 
-
+openai.api_key = os.environ.get('OPENAI_API_KEY')
 # Create your models here.
 class Article(models.Model):
     title = models.CharField(max_length=255, blank=True)
     content = models.TextField(blank=True)
     photo = models.ImageField(upload_to="mediaphoto", blank=True, null=True)
-
+    description = models.TextField(blank=True)
     def __str__(self):
         return self.title
 
@@ -46,6 +48,7 @@ class Article(models.Model):
                     best_guess = decoded_predictions[0][1]
                     # Ustawia tytuł na najbardziej prawdopodobną etykietę
                     self.title = best_guess
+                    self.description = self.generate_description()
                     # Tworzy łańcuch znaków zawierający etykiety i prawdopodobieństwa predykcji
                     self.content = ', '.join([f"{pred[1]}: {pred[2] * 100:.2f}%" for pred in decoded_predictions])
                     super().save(*args, **kwargs)
@@ -54,3 +57,22 @@ class Article(models.Model):
                 # Nic nie robi w przypadku wystąpienia wyjątku
                 print(e)
                 pass
+
+    def generate_description(self):
+        try:
+            # Wywołanie GPT-3 z użyciem klucza API, przekazując tytuł jako część monitu
+            response = openai.Completion.create(
+                # Wywołuje metodę create na obiekcie Completion z pakietu openai, aby uzyskać odpowiedź od modelu GPT-3
+                engine="gpt-3.5-turbo-instruct",  # Określa model GPT-3 do wykorzystania
+                prompt=f"Generate a descriptive text based on the following title: {self.title}\n",
+                # Definiuje monit dla modelu GPT-3, prosząc o wygenerowanie opisu na podstawie tytułu
+                temperature=0.7,  # Ustawia temperaturę dla procesu generowania, wpływając na kreatywność odpowiedzi
+                max_tokens=100  # Określa maksymalną liczbę tokenów, które model może wygenerować jako odpowiedź
+            )
+            # Zwróć tekst wygenerowany przez GPT-3 jako opis
+            return response.choices[
+                0].text.strip()  # Zwraca tekst wygenerowany przez model, usuwając białe znaki z początku i końca
+        except Exception as e:
+            # W przypadku błędu zwróć komunikat błędu lub domyślny opis
+            print(f"Error generating description: {str(e)}")  # Wypisuje komunikat o błędzie do konsoli
+            return "{}".format(e)  # Zwraca komunikat błędu jako opis
